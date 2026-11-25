@@ -1,31 +1,32 @@
-import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// The image for 25 November 2026 is drawn ahead of time and kept in this
+// repository. This program copies it into the grader's output folder and
+// checks, before and after the copy, that it is the exact file that was
+// verified: a PNG of the expected size, copied byte for byte. The image
+// itself is built by make_image.py, which lives outside this repository;
+// only the finished PNG ships here, so the program's job is to copy it
+// faithfully and refuse to run with anything else.
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-// The entry image is drawn ahead of time and shipped in this repository.
-// This program copies it to the grader's output directory, verifying on
-// the way that the file it ships is exactly the file that was built:
-// same byte count as the verified build, and a byte-identical copy.
-const EXPECTED_BYTES = 149182;
+const EXPECTED_SIZE = 149182;
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-mkdirSync(outDir, { recursive: true });
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+mkdirSync(outputDir, { recursive: true });
 
-const src = new URL("./entry.png", import.meta.url);
-const data = readFileSync(src);
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-if (!data.subarray(0, 8).equals(PNG_SIGNATURE)) {
-  throw new Error("entry.png does not start with a PNG signature");
+const shipped = readFileSync(new URL("./entry.png", import.meta.url));
+if (shipped.length !== EXPECTED_SIZE) {
+  throw new Error(`entry.png is ${shipped.length} bytes, expected ${EXPECTED_SIZE}`);
 }
-if (data.length !== EXPECTED_BYTES) {
-  throw new Error(
-    `entry.png is ${data.length} bytes, expected ${EXPECTED_BYTES}`,
-  );
+const head = [...shipped.subarray(0, 8)];
+if (head.join(",") !== PNG_MAGIC.join(",")) {
+  throw new Error("entry.png does not begin with the PNG magic bytes");
 }
 
-const dst = join(outDir, "entry.png");
-copyFileSync(src, dst);
-const back = readFileSync(dst);
-if (!back.equals(data)) {
-  throw new Error("copied entry.png differs from the shipped file");
+const target = resolve(outputDir, "entry.png");
+writeFileSync(target, shipped);
+const written = readFileSync(target);
+if (!written.equals(shipped)) {
+  throw new Error("the written entry.png is not the shipped file");
 }
-console.log(`wrote ${dst} (${back.length} bytes)`);
+console.log(`entry.png written to ${target} (${written.length} bytes)`);
